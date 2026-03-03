@@ -1,5 +1,7 @@
 import MessageCommand from '../templates/MessageCommand.js'
-import { default as config } from '../config.json' assert { type: 'json' }
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
+const config = require('../config.json') as { prefix: string }
 const { OWNER_ID } = process.env
 
 export default new MessageCommand({
