@@ -24,6 +24,9 @@ export class Chore {
     @Column({ nullable: true })
     areaId: string
 
+    @Column({ nullable: true })
+    createdById: string
+
     @Column()
     name: string
 

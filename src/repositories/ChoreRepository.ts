@@ -1,56 +1,85 @@
-// import { AppDataSource } from '../database.js'
-// import { Chore } from '../entities/Chore.js'
+import { AppDataSource } from '../database.js'
+import { Chore } from '../entities/Chore.js'
+import { ChoreCompletion } from '../entities/ChoresCompletion.js'
+import { User } from '../entities/User.js'
 
-// const repo = () => AppDataSource.getRepository(Chore)
+const repo = () => AppDataSource.getRepository(Chore)
+export enum ChoreRecurrence {
+    DAILY = 'daily',
+    WEEKLY = 'weekly',
+    BIWEEKLY = 'biweekly'
+}
 
-// export async function createChore(data: {
-//     area: 'Kitchen' | 'Hall/Living Room' | 'Washroom' | 'Misc'
-//     name: string
-//     createdBy: string
-//     basePoints: number
-//     frequency: 'Everyday' | 'Weekly'
-// }): Promise<Chore> {
-//     const chore = repo().create(data)
-//     return repo().save(chore)
-// }
+export async function createChore(data: {
+    name: string
+    areaId: string
+    points: number
+    recurrence: ChoreRecurrence
+}): Promise<Chore> {
+    const chore = repo().create(data)
+    return repo().save(chore)
+}
 
-// export async function findChoreById(id: number): Promise<Chore | null> {
-//     return repo().findOne({
-//         where: { id },
-//         relations: ['assignments', 'assignments.user']
-//     })
-// }
+export async function deleteChore(data: { id: string }): Promise<void> {
+    await repo().delete({ id: data.id })
+}
 
-// export async function findChoreByName(name: string): Promise<Chore | null> {
-//     return repo().findOne({
-//         where: { name },
-//         relations: ['assignments', 'assignments.user']
-//     })
-// }
+export async function findAllChoresByArea(areaId: string): Promise<Chore[]> {
+    return await repo().find({
+        where: { area: { id: areaId } },
+        relations: ['area'],
+        order: { name: 'ASC' }
+    })
+}
 
-// export async function getAllActiveChores(): Promise<Chore[]> {
-//     return repo().find({
-//         where: { isActive: true },
-//         relations: ['assignments', 'assignments.user']
-//     })
-// }
+export async function findChoresAsIncharge(
+    discordId: string
+): Promise<Chore[]> {
+    const chores = repo()
+        .createQueryBuilder('chore')
+        .innerJoin('chore.area', 'area')
+        .innerJoin('area_rotations', 'rotation', 'rotation.areaId = area.id')
+        .innerJoin(
+            'roomates',
+            'user',
+            'user.id = rotation.userId AND user.discordUserId = :discordId',
+            { discordId }
+        )
+        .where('rotation.isCurrent = true')
+        .leftJoinAndSelect('chore.area', 'choreArea')
+        .addSelect([
+            'user.id',
+            'user.discordUserId',
+            'user.isAdmin',
+            'user.points'
+        ])
+        .getMany()
+    return await chores
+}
 
-// export async function getChoresByArea(
-//     area: 'Kitchen' | 'Hall/Living Room' | 'Washroom' | 'Misc'
-// ): Promise<Chore[]> {
-//     return repo().find({
-//         where: { isActive: true, area },
-//         relations: ['assignments', 'assignments.user']
-//     })
-// }
+export function markCompleted(data: {
+    choreId: string
+    inchargeId: string
+    isCover: boolean
+    completedById: string
+    pointsAwarded: number
+}): Promise<ChoreCompletion> {
+    return AppDataSource.transaction(async (manager) => {
+        // Add to come history
+        const completion = manager.getRepository(ChoreCompletion).create({
+            choreId: data.choreId,
+            completedById: data.completedById,
+            inchargeId: data.inchargeId,
+            isCover: data.isCover,
+            pointsAwarded: data.pointsAwarded
+        })
+        await manager.save(completion)
 
-// export async function updateChore(
-//     id: number,
-//     data: Partial<Chore>
-// ): Promise<void> {
-//     await repo().update({ id }, data)
-// }
+        // update point for user
+        await manager
+            .getRepository(User)
+            .increment({ id: data.completedById }, 'points', data.pointsAwarded)
 
-// export async function deactivateChore(id: number): Promise<void> {
-//     await repo().update({ id }, { isActive: false })
-// }
+        return completion
+    })
+}
