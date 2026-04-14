@@ -21,6 +21,12 @@ export async function findUserByDiscordId(
     })
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function getRoommates(serverId?: string): Promise<User[]> {
+    const users = repo.find()
+    return users
+}
+
 export async function incrementStreak(discordUserId: string) {
     await repo.manager.transaction(async (manager) => {
         const user = await manager.findOneOrFail(User, {
